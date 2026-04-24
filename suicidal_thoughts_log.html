@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <title>希死念慮 記録アプリ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Vue.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
-  <!-- jsPDF CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body { font-family: sans-serif; margin: 0; padding: 10px; background: #fefefe; }
@@ -19,28 +17,36 @@
     .del-btn { color: #e34949; background: none; border:none;}
     .add-manual {font-size:13px;}
     .pdf-btn {margin-top:12px; font-size:16px;}
+    .recording { background: #fff2e2; border:1.5px dashed #e58915; margin:7px 0; padding:8px 4px; border-radius:8px;}
   </style>
 </head>
 <body>
 <div id="app">
   <h2>希死念慮 記録アプリ</h2>
 
+  <!-- 一覧 -->
   <div v-for="(entry, i) in log" :key="entry.date" class="date-row">
     <span class="date-label">{{ entry.date }}</span>
-    <!-- timeline bar -->
     <div class="timeline">
       <div v-for="(r, j) in entry.ranges" :style="barStyle(r.start, r.end)" class="bar"></div>
     </div>
     <button class="del-btn" @click="removeDate(i)">削除</button>
   </div>
 
-  <div>
-    <button @click="recordNow">今の時刻を記録</button>
-    <button @click="saveToPdf" class="pdf-btn">PDF書き出し</button>
+  <!-- 録画中パネル -->
+  <div v-if="isRecording" class="recording">
+    <b>今記録中（希死念慮 継続中）:</b>
+    <span> {{recordingStart}} 〜 ...</span>
+    <button @click="stopRecord">収まった（終了）</button>
   </div>
+  <div v-else>
+    <button @click="startRecord">希死念慮が始まった</button>
+  </div>
+  <button @click="saveToPdf" class="pdf-btn">PDF書き出し</button>
+
   <!-- 手動追加 -->
   <details class="add-manual">
-    <summary>手動で追加</summary>
+    <summary>手動で追加・修正</summary>
     <label>日付: <input type="date" v-model="manual.date"></label><br>
     <label>開始: <input type="time" v-model="manual.start"></label>
     <label>終了: <input type="time" v-model="manual.end"></label>
@@ -54,58 +60,66 @@ new Vue({
   data: {
     log: [],
     manual: {date: '', start: '', end: ''},
-    recordState: null, // 開始/終了ボタン自動管理したい時用
+    isRecording: false,
+    recordingStart: null,
+    recordingDate: null,
   },
   created() {
-    // localStorage から復元
+    // 復元
     const data = localStorage.getItem('suicidal_log_v1');
     if(data) this.log = JSON.parse(data);
+
+    // 記録中状態も復元
+    const s = localStorage.getItem('suicidal_rec_start');
+    const d = localStorage.getItem('suicidal_rec_date');
+    if(s && d){
+      this.isRecording = true; this.recordingStart = s; this.recordingDate = d;
+    }
   },
   watch: {
     log: {
-      handler(val) {
-        localStorage.setItem('suicidal_log_v1', JSON.stringify(val));
-      }, deep:true
+      handler(val) { localStorage.setItem('suicidal_log_v1', JSON.stringify(val)); }, deep:true
+    },
+    isRecording: function(val){
+      if(val){
+        localStorage.setItem('suicidal_rec_start', this.recordingStart);
+        localStorage.setItem('suicidal_rec_date', this.recordingDate);
+      }else{
+        localStorage.removeItem('suicidal_rec_start');
+        localStorage.removeItem('suicidal_rec_date');
+      }
     }
   },
   methods: {
-    today() {
-      return new Date().toISOString().slice(0,10);
-    },
-    timeNum(str) {
-      // "14:30"→870分
-      if(!str)return 0;
-      const [h,m] = str.split(':').map(Number);
-      return h*60+m;
-    },
+    today() { return new Date().toISOString().slice(0,10); },
+    nowTime() { return new Date().toTimeString().slice(0,5); },
+    timeNum(str){if(!str)return 0;const [h,m]=str.split(':').map(Number);return h*60+m;},
     barStyle(s, e) {
       const left = (this.timeNum(s)/1440*100).toFixed(1)+'%';
       const width = ((this.timeNum(e)-this.timeNum(s))/1440*100).toFixed(1)+'%';
       return {left, width, background:'#e44040'};
     },
-    findToday(){
-      return this.log.find(e=>e.date===this.today());
+    findDate(d){ return this.log.find(e=>e.date===d); },
+    startRecord(){
+      this.isRecording = true;
+      this.recordingStart = this.nowTime();
+      this.recordingDate = this.today();
     },
-    recordNow() {
-      // 今の日時を区間として記録(1分間)
-      const d = this.today();
-      const now = new Date();
-      const t = now.toTimeString().slice(0,5);
+    stopRecord(){
+      const now = this.nowTime();
+      const d = this.recordingDate||this.today();
       let ent = this.log.find(e=>e.date===d);
-      if(!ent){
-        ent = {date:d, ranges:[]};
-        this.log.unshift(ent);
-      }
-      ent.ranges.push({start: t, end: t});
+      if(!ent){ent={date:d, ranges:[]}; this.log.unshift(ent);}
+      ent.ranges.push({start:this.recordingStart, end:now});
+      this.isRecording = false;
+      this.recordingStart = null;
+      this.recordingDate = null;
     },
     addManual() {
       const {date, start, end} = this.manual;
       if(!date||!start||!end)return alert('全部入れて！');
-      let ent = this.log.find(e=>e.date===date);
-      if(!ent){
-        ent = {date, ranges:[]};
-        this.log.unshift(ent);
-      }
+      let ent = this.findDate(date);
+      if(!ent){ent={date, ranges:[]}; this.log.unshift(ent);}
       ent.ranges.push({start, end});
       this.manual = {date:'', start:'', end:''};
     },
