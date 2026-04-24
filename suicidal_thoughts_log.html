@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>希死念慮 記録アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Vue.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <!-- jsPDF CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 10px; background: #fefefe; }
+    .timeline { width: 95vw; max-width:600px; height: 22px; border-radius: 12px; background: #eee; position: relative; margin: 4px 0 12px 0;}
+    .bar { height: 22px; position: absolute; border-radius: 12px; background: #e44040; transition: width 0.3s; }
+    .date-row {display: flex; align-items: center; margin-bottom: 6px;}
+    .date-label { width: 95px; color: #333; font-size:13px;}
+    button, select { margin: 4px; font-size:15px;}
+    .small {font-size:10px;}
+    .del-btn { color: #e34949; background: none; border:none;}
+    .add-manual {font-size:13px;}
+    .pdf-btn {margin-top:12px; font-size:16px;}
+  </style>
+</head>
+<body>
+<div id="app">
+  <h2>希死念慮 記録アプリ</h2>
+
+  <div v-for="(entry, i) in log" :key="entry.date" class="date-row">
+    <span class="date-label">{{ entry.date }}</span>
+    <!-- timeline bar -->
+    <div class="timeline">
+      <div v-for="(r, j) in entry.ranges" :style="barStyle(r.start, r.end)" class="bar"></div>
+    </div>
+    <button class="del-btn" @click="removeDate(i)">削除</button>
+  </div>
+
+  <div>
+    <button @click="recordNow">今の時刻を記録</button>
+    <button @click="saveToPdf" class="pdf-btn">PDF書き出し</button>
+  </div>
+  <!-- 手動追加 -->
+  <details class="add-manual">
+    <summary>手動で追加</summary>
+    <label>日付: <input type="date" v-model="manual.date"></label><br>
+    <label>開始: <input type="time" v-model="manual.start"></label>
+    <label>終了: <input type="time" v-model="manual.end"></label>
+    <button @click="addManual">追加</button>
+  </details>
+</div>
+
+<script>
+new Vue({
+  el: '#app',
+  data: {
+    log: [],
+    manual: {date: '', start: '', end: ''},
+    recordState: null, // 開始/終了ボタン自動管理したい時用
+  },
+  created() {
+    // localStorage から復元
+    const data = localStorage.getItem('suicidal_log_v1');
+    if(data) this.log = JSON.parse(data);
+  },
+  watch: {
+    log: {
+      handler(val) {
+        localStorage.setItem('suicidal_log_v1', JSON.stringify(val));
+      }, deep:true
+    }
+  },
+  methods: {
+    today() {
+      return new Date().toISOString().slice(0,10);
+    },
+    timeNum(str) {
+      // "14:30"→870分
+      if(!str)return 0;
+      const [h,m] = str.split(':').map(Number);
+      return h*60+m;
+    },
+    barStyle(s, e) {
+      const left = (this.timeNum(s)/1440*100).toFixed(1)+'%';
+      const width = ((this.timeNum(e)-this.timeNum(s))/1440*100).toFixed(1)+'%';
+      return {left, width, background:'#e44040'};
+    },
+    findToday(){
+      return this.log.find(e=>e.date===this.today());
+    },
+    recordNow() {
+      // 今の日時を区間として記録(1分間)
+      const d = this.today();
+      const now = new Date();
+      const t = now.toTimeString().slice(0,5);
+      let ent = this.log.find(e=>e.date===d);
+      if(!ent){
+        ent = {date:d, ranges:[]};
+        this.log.unshift(ent);
+      }
+      ent.ranges.push({start: t, end: t});
+    },
+    addManual() {
+      const {date, start, end} = this.manual;
+      if(!date||!start||!end)return alert('全部入れて！');
+      let ent = this.log.find(e=>e.date===date);
+      if(!ent){
+        ent = {date, ranges:[]};
+        this.log.unshift(ent);
+      }
+      ent.ranges.push({start, end});
+      this.manual = {date:'', start:'', end:''};
+    },
+    removeDate(i){
+      if(confirm('本当に消しますか？'))this.log.splice(i,1);
+    },
+    saveToPdf(){
+      const doc = new window.jspdf.jsPDF();
+      doc.text("希死念慮 記録ログ", 10, 10);
+      let y = 20;
+      this.log.forEach(entry=>{
+        doc.text(`${entry.date}`, 10, y);
+        y+=6;
+        entry.ranges.forEach(r=>{
+          doc.text(`  ${r.start} - ${r.end}`, 10, y);
+          y+=6;
+        });
+        y+=3;
+        if(y>270){doc.addPage();y=10;}
+      });
+      doc.save("log.pdf");
+    }
+  }
+});
+</script>
+</body>
+</html>
