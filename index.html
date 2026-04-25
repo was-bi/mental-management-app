@@ -7,49 +7,63 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 10px; background: #fefefe; }
-    .timeline { width: 95vw; max-width:600px; height: 22px; border-radius: 12px; background: #eee; position: relative; margin: 4px 0 12px 0;}
-    .bar { height: 22px; position: absolute; border-radius: 12px; background: #e44040; transition: width 0.3s; }
-    .date-row {display: flex; align-items: center; margin-bottom: 6px;}
-    .date-label { width: 95px; color: #333; font-size:13px;}
-    button, select { margin: 4px; font-size:15px;}
-    .small {font-size:10px;}
-    .del-btn { color: #e34949; background: none; border:none;}
-    .add-manual {font-size:13px;}
-    .pdf-btn {margin-top:12px; font-size:16px;}
-    .recording { background: #fff2e2; border:1.5px dashed #e58915; margin:7px 0; padding:8px 4px; border-radius:8px;}
+    body { font-family: sans-serif; margin: 0; padding: 20px; background: #f9f9f9; color: #333; }
+    h2 { font-size: 1.2rem; border-left: 5px solid #e44040; padding-left: 10px; }
+    
+    /* ガントチャートの外枠 */
+    .chart-container { position: relative; margin-bottom: 20px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .date-label { font-weight: bold; font-size: 14px; margin-bottom: 8px; display: block; }
+    
+    /* 24時間の背景目盛り */
+    .timeline-wrapper { position: relative; height: 40px; background: #eee; border-radius: 4px; overflow: hidden; border: 1px solid #ddd; }
+    .hour-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(0,0,0,0.1); }
+    .hour-text { position: absolute; top: 42px; font-size: 9px; color: #888; transform: translateX(-50%); }
+
+    /* 記録されたバー */
+    .bar { height: 100%; position: absolute; background: #e44040; opacity: 0.8; z-index: 2; border-radius: 2px; }
+
+    .controls { margin-top: 30px; display: flex; gap: 10px; flex-wrap: wrap; }
+    button { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
+    .btn-record { background: #e44040; color: white; }
+    .btn-stop { background: #333; color: white; }
+    .btn-pdf { background: #555; color: white; }
+    .btn-del { background: none; color: #999; font-size: 12px; text-decoration: underline; margin-top: 5px; }
+
+    .recording-status { background: #fff2e2; border: 1px solid #e58915; padding: 15px; border-radius: 8px; margin: 15px 0; }
+    details { margin-top: 20px; font-size: 13px; color: #666; }
   </style>
 </head>
 <body>
 <div id="app">
-  <h2>希死念慮 記録アプリ</h2>
+  <h2>希死念慮 記録ログ</h2>
 
-  <!-- 一覧 -->
-  <div v-for="(entry, i) in log" :key="entry.date" class="date-row">
+  <div v-for="(entry, i) in log" :key="entry.date" class="chart-container">
     <span class="date-label">{{ entry.date }}</span>
-    <div class="timeline">
+    <div class="timeline-wrapper">
+      <div v-for="h in 25" :key="h" class="hour-grid" :style="{ left: ((h-1)/24*100) + '%' }"></div>
       <div v-for="(r, j) in entry.ranges" :style="barStyle(r.start, r.end)" class="bar"></div>
     </div>
-    <button class="del-btn" @click="removeDate(i)">削除</button>
+    <div style="position: relative; height: 20px; margin-bottom: 10px;">
+      <span v-for="h in [0,3,6,9,12,15,18,21,24]" :key="h" class="hour-text" :style="{ left: (h/24*100) + '%' }">{{h}}</span>
+    </div>
+    <button class="btn-del" @click="removeDate(i)">この日のデータを削除</button>
   </div>
 
-  <!-- 録画中パネル -->
-  <div v-if="isRecording" class="recording">
-    <b>今記録中（希死念慮 継続中）:</b>
-    <span> {{recordingStart}} 〜 ...</span>
-    <button @click="stopRecord">収まった（終了）</button>
+  <div class="controls">
+    <div v-if="isRecording" class="recording-status">
+      <strong>現在記録中...</strong><br>
+      開始時刻: {{recordingStart}}<br>
+      <button class="btn-stop" @click="stopRecord" style="margin-top:10px;">収まった（終了）</button>
+    </div>
+    <button v-else class="btn-record" @click="startRecord">希死念慮が始まった</button>
+    <button @click="saveToPdf" class="btn-pdf">PDFで保存する</button>
   </div>
-  <div v-else>
-    <button @click="startRecord">希死念慮が始まった</button>
-  </div>
-  <button @click="saveToPdf" class="pdf-btn">PDF書き出し</button>
 
-  <!-- 手動追加 -->
-  <details class="add-manual">
-    <summary>手動で追加・修正</summary>
-    <label>日付: <input type="date" v-model="manual.date"></label><br>
-    <label>開始: <input type="time" v-model="manual.start"></label>
-    <label>終了: <input type="time" v-model="manual.end"></label>
+  <details>
+    <summary>手動で時間を追加する</summary>
+    日付: <input type="date" v-model="manual.date"><br>
+    開始: <input type="time" v-model="manual.start"> 
+    終了: <input type="time" v-model="manual.end">
     <button @click="addManual">追加</button>
   </details>
 </div>
@@ -65,41 +79,28 @@ new Vue({
     recordingDate: null,
   },
   created() {
-    // 復元
-    const data = localStorage.getItem('suicidal_log_v1');
+    const data = localStorage.getItem('suicidal_log_v2');
     if(data) this.log = JSON.parse(data);
-
-    // 記録中状態も復元
     const s = localStorage.getItem('suicidal_rec_start');
     const d = localStorage.getItem('suicidal_rec_date');
-    if(s && d){
-      this.isRecording = true; this.recordingStart = s; this.recordingDate = d;
-    }
+    if(s && d){ this.isRecording = true; this.recordingStart = s; this.recordingDate = d; }
   },
   watch: {
-    log: {
-      handler(val) { localStorage.setItem('suicidal_log_v1', JSON.stringify(val)); }, deep:true
-    },
-    isRecording: function(val){
-      if(val){
-        localStorage.setItem('suicidal_rec_start', this.recordingStart);
-        localStorage.setItem('suicidal_rec_date', this.recordingDate);
-      }else{
-        localStorage.removeItem('suicidal_rec_start');
-        localStorage.removeItem('suicidal_rec_date');
-      }
+    log: { handler(val) { localStorage.setItem('suicidal_log_v2', JSON.stringify(val)); }, deep:true },
+    isRecording(val){
+      if(val){ localStorage.setItem('suicidal_rec_start', this.recordingStart); localStorage.setItem('suicidal_rec_date', this.recordingDate);
+      }else{ localStorage.removeItem('suicidal_rec_start'); localStorage.removeItem('suicidal_rec_date'); }
     }
   },
   methods: {
-    today() { return new Date().toISOString().slice(0,10); },
+    today() { return new Date().toLocaleString('sv-SE').slice(0,10); },
     nowTime() { return new Date().toTimeString().slice(0,5); },
-    timeNum(str){if(!str)return 0;const [h,m]=str.split(':').map(Number);return h*60+m;},
+    timeNum(str){ const [h,m]=str.split(':').map(Number); return h*60+m; },
     barStyle(s, e) {
-      const left = (this.timeNum(s)/1440*100).toFixed(1)+'%';
-      const width = ((this.timeNum(e)-this.timeNum(s))/1440*100).toFixed(1)+'%';
-      return {left, width, background:'#e44040'};
+      const left = (this.timeNum(s)/1440*100).toFixed(2)+'%';
+      const width = ((this.timeNum(e)-this.timeNum(s))/1440*100).toFixed(2)+'%';
+      return { left, width };
     },
-    findDate(d){ return this.log.find(e=>e.date===d); },
     startRecord(){
       this.isRecording = true;
       this.recordingStart = this.nowTime();
@@ -107,38 +108,31 @@ new Vue({
     },
     stopRecord(){
       const now = this.nowTime();
-      const d = this.recordingDate||this.today();
+      const d = this.recordingDate || this.today();
       let ent = this.log.find(e=>e.date===d);
-      if(!ent){ent={date:d, ranges:[]}; this.log.unshift(ent);}
+      if(!ent){ ent={date:d, ranges:[]}; this.log.unshift(ent); }
       ent.ranges.push({start:this.recordingStart, end:now});
+      this.log.sort((a,b) => b.date.localeCompare(a.date));
       this.isRecording = false;
-      this.recordingStart = null;
-      this.recordingDate = null;
     },
     addManual() {
       const {date, start, end} = this.manual;
-      if(!date||!start||!end)return alert('全部入れて！');
-      let ent = this.findDate(date);
-      if(!ent){ent={date, ranges:[]}; this.log.unshift(ent);}
+      if(!date||!start||!end) return alert('入力してください');
+      let ent = this.log.find(e=>e.date===date);
+      if(!ent){ ent={date, ranges:[]}; this.log.unshift(ent); }
       ent.ranges.push({start, end});
+      this.log.sort((a,b) => b.date.localeCompare(a.date));
       this.manual = {date:'', start:'', end:''};
     },
-    removeDate(i){
-      if(confirm('本当に消しますか？'))this.log.splice(i,1);
-    },
+    removeDate(i){ if(confirm('削除しますか？')) this.log.splice(i,1); },
     saveToPdf(){
       const doc = new window.jspdf.jsPDF();
       doc.text("希死念慮 記録ログ", 10, 10);
       let y = 20;
       this.log.forEach(entry=>{
-        doc.text(`${entry.date}`, 10, y);
-        y+=6;
-        entry.ranges.forEach(r=>{
-          doc.text(`  ${r.start} - ${r.end}`, 10, y);
-          y+=6;
-        });
-        y+=3;
-        if(y>270){doc.addPage();y=10;}
+        doc.text(entry.date, 10, y); y+=8;
+        entry.ranges.forEach(r=>{ doc.text(`  ${r.start} - ${r.end}`, 15, y); y+=6; });
+        y+=4; if(y>270){doc.addPage();y=10;}
       });
       doc.save("log.pdf");
     }
